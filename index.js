@@ -45,22 +45,25 @@ app.post('/api/chat', async (req, res) => {
       system: SYSTEM_PROMPT,
       messages,
       onFinish: async (completion) => {
-        // Log to Supabase after completion
+        console.log(`[AI Finish] Logging to Supabase...`);
         try {
-          await supabase.from('ai_logs').insert({
+          const { error } = await supabase.from('ai_logs').insert({
             feature_id: featureId || 'general',
             prompt: messages[messages.length - 1].content,
             completion: completion.text,
             model: 'llama-3.1-8b-instant',
             timestamp: new Date().toISOString()
           });
+          if (error) throw error;
+          console.log(`[Supabase] Logged successfully.`);
         } catch (dbError) {
-          console.error('Database logging error:', dbError);
+          console.error('[Supabase Error]', dbError.message);
         }
       }
     });
 
-    return result.toTextStreamResponse(res);
+    // Use pipeTextStreamToResponse for Express.js compatibility
+    result.pipeTextStreamToResponse(res);
   } catch (error) {
     console.error('Backend AI Error:', error);
     res.status(500).json({ error: 'Failed to process AI request on Railway.' });
