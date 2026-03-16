@@ -35,6 +35,24 @@ app.get('/health', (req, res) => {
   res.json({ status: 'live', engine: 'docker-alpine', region: 'APAC' });
 });
 
+// Database Test
+app.get('/api/test-db', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('ai_logs').insert({
+      feature_id: 'test-endpoint',
+      prompt: 'Is database connected?',
+      completion: 'Yes, it works!',
+      model: 'system-test'
+    });
+    
+    if (error) throw error;
+    res.json({ success: true, data });
+  } catch (err) {
+    console.error('Test DB Error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Generic AI Chat Endpoint with Streaming and Logging
 app.post('/api/chat', async (req, res) => {
   const { messages, featureId } = req.body;
