@@ -3,6 +3,8 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const { createClient } = require('@supabase/supabase-js');
 const { groq } = require('@ai-sdk/groq');
+const { mistral } = require('@ai-sdk/mistral');
+const { deepseek } = require('@ai-sdk/deepseek');
 const { streamText } = require('ai');
 
 dotenv.config();
@@ -53,15 +55,40 @@ app.get('/api/test-db', async (req, res) => {
   }
 });
 
-// Generic AI Chat Endpoint with Streaming and Logging
-app.post('/api/chat', async (req, res) => {
-  const { messages, featureId } = req.body;
+// Legacy redirects or multi-endpoint support
+const handleChatRequest = async (req, res) => {
+  const { messages, featureId: bodyFeatureId } = req.body;
+  // Fallback to route-based feature detection if featureId missing in body
+  const featureId = bodyFeatureId || req.path.split('/').pop();
 
   try {
     console.log(`[AI Request] feature: ${featureId}, messages: ${messages?.length}`);
 
+    let aiModel;
+    let modelDisplayName = 'Llama 3.1 8B';
+
+    switch (featureId) {
+      case 'resume':
+      case 'analyze':
+        aiModel = mistral('mistral-small-latest');
+        modelDisplayName = 'Mistral Small';
+        break;
+      case 'code':
+      case 'explain':
+        aiModel = groq('llama-3.3-70b-versatile');
+        modelDisplayName = 'Llama 3.3 70B';
+        break;
+      case 'reasoning':
+        aiModel = deepseek('deepseek-chat');
+        modelDisplayName = 'DeepSeek V3';
+        break;
+      default:
+        aiModel = groq('llama-3.1-8b-instant');
+        modelDisplayName = 'Llama 3.1 8B';
+    }
+
     const result = await streamText({
-      model: groq('llama-3.1-8b-instant'),
+      model: aiModel,
       system: SYSTEM_PROMPT,
       messages,
       onFinish: async (completion) => {
@@ -73,7 +100,7 @@ app.post('/api/chat', async (req, res) => {
             feature_id: featureId || 'general',
             prompt: lastMessage,
             completion: completion.text,
-            model: 'llama-3.1-8b-instant'
+            model: modelDisplayName
           });
           
           if (error) {
@@ -90,9 +117,16 @@ app.post('/api/chat', async (req, res) => {
     result.pipeTextStreamToResponse(res);
   } catch (error) {
     console.error('Backend AI Error:', error);
-    res.status(500).json({ error: 'Failed to process AI request on Railway.' });
+    res.status(500).json({ error: `Failed to process AI request (${featureId}) on Railway.` });
   }
-});
+};
+
+app.post('/api/chat', handleChatRequest);
+app.post('/api/analyze', handleChatRequest); // Legacy endpoint match
+app.post('/api/resume', handleChatRequest);   // Legacy endpoint match
+app.post('/api/explain', handleChatRequest);  // Legacy endpoint match
+app.post('/api/code', handleChatRequest);     // Legacy endpoint match
+app.post('/api/reasoning', handleChatRequest); // Legacy endpoint match
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Production Backend Live on port ${PORT}`);
